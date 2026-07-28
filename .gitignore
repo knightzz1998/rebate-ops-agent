@@ -1,0 +1,11 @@
+# 敏感配置文件 (不要提交到 Git)
+*docker-compose.override.yml
+.env
+.env.*
+db_env.sh
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
