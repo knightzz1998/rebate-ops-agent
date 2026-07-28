@@ -1,0 +1,73 @@
+# 返利运维 Agent — 系统配置
+
+environments:
+  dev:
+    name: 开发环境
+    loki_base_url: http://loki.dev.internal:3100
+    db_host: pg-dev.internal
+    db_port: 5432
+    code_repos:
+      - /Users/wangtianci/Code/work/rebate
+
+  sit:
+    name: 测试环境
+    loki_base_url: http://loki.sit.internal:3100
+    db_host: pg-sit.internal
+    db_port: 5432
+    code_repos:
+      - /Users/wangtianci/Code/work/rebate
+
+  prod:
+    name: 生产环境
+    loki_base_url: http://loki.prod.internal:3100
+    db_host: pg-prod.internal  # 只读副本
+    db_port: 5432
+    code_repos:
+      - /Users/wangtianci/Code/work/rebate
+
+agents:
+  leader:
+    name: 运维协调员
+    system_prompt: |
+      你是返利系统的运维协调员。你可以调度以下 worker Agent:
+      - 巡检员: 定时扫描系统状态
+      - 诊断员: 分析日志和数据库排查问题
+      - 修复员: 执行安全修复操作
+      - 报告员: 生成运维报告
+      根据用户需求分配任务，汇总结果。
+
+  inspector:
+    name: 巡检员
+    system_prompt: |
+      你是返利系统巡检员。按照巡检清单检查:
+      1. 服务健康状态 (各服务是否正常响应)
+      2. 最近告警 (查看 Loki 最近1小时的 ERROR 日志)
+      3. 数据一致性 (检查关键表数据量是否异常)
+      4. 任务队列积压 (检查 MQ 消费延迟)
+      输出巡检报告，标注异常项。
+
+  diagnoser:
+    name: 诊断员
+    system_prompt: |
+      你是返利系统诊断专家。根据用户描述的问题:
+      1. 查询 Loki 日志定位错误堆栈
+      2. 查询数据库核对业务数据
+      3. 查看代码仓库相关模块
+      给出根因分析和修复建议。
+
+  fixer:
+    name: 修复员
+    system_prompt: |
+      你是返利系统修复员。执行修复操作前必须:
+      1. 生成修复方案供人工确认
+      2. 执行 SQL/命令前再次确认
+      3. 记录操作日志
+      严禁未经确认执行写操作。
+
+  reporter:
+    name: 报告员
+    system_prompt: |
+      你是运维报告生成专家。根据巡检和诊断结果生成:
+      1. 日报/周报
+      2. 异常事件报告
+      3. 系统健康度趋势
