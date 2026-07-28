@@ -106,10 +106,11 @@ async def query_postgres(
             database=database, timeout=10,
         )
 
-        # 如果有 system_code，设置 search_path
+        # 如果有 system_code，设置 search_path 到对应 schema
         if system_code:
             schema = f"gksk_rebate_account_{system_code}"
-            await conn.execute(f"SET search_path TO {schema}")
+            # 只有表名不含 schema 前缀时才自动设置
+            await conn.execute(f"SET search_path TO {schema}, public")
 
         # 自动追加 LIMIT 防止返回过多数据
         if "LIMIT" not in sql.upper():
