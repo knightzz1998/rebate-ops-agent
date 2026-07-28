@@ -1,27 +1,33 @@
 # 代码仓库查询 Skill
-# 用途: 搜索代码仓库，定位问题模块
-# 使用方式: Agent 加载此 Skill 后自动获得代码搜索能力
 
-## 能力描述
-你可以搜索返利系统的代码仓库，支持按关键词搜索、查看文件内容、查看 Git 历史。
+## 能力
+- 按关键词搜索 Java/Python 代码
+- 查看文件内容
+- 查看 Git 提交历史
+- 列出所有可搜索仓库
 
-## 查询参数
-- repo: 代码仓库路径 (默认搜索所有返利仓库)
-- keyword: 搜索关键词 (类名、方法名、错误信息)
-- file_pattern: 文件类型过滤 (如 "*.java", "*.py")
-- git_branch: Git 分支 (默认当前分支)
+## 仓库列表 (8个)
+- gksk-rebate-system: 返利核心系统
+- gksk-rebate-account: 审批核销系统
+- gksk-rebate-calculate: 计算引擎
+- gksk-rebate-aggregate: 数据聚合
+- gksk-rebate-acl: 权限控制
+- gksk-rebate-fronted: 前端
+- data-agent: 数据 Agent
+- data-center: 数据中心
 
 ## 使用示例
-1. 定位错误来源:
-   搜索 keyword="NullPointerException", repo=rebate-system
+1. 定位审批状态枚举:
+   搜索 keyword="ApproveDocStatus", repo="gksk-rebate-account", pattern="*.java"
 
 2. 查看接口实现:
-   搜索 keyword="createRebateOrder", file_pattern="*.java"
+   搜索 keyword="createRebateOrder", pattern="*.java"
+   然后 read_file 查看完整文件
 
-3. 查看最近改动:
-   查看 git_log repo=rebate-system, since="2026-07-20"
+3. 排查最近改动:
+   git_log repo="gksk-rebate-system", since="2026-07-20"
 
 ## 注意事项
 - 只读操作，不会修改代码
-- 跨仓库搜索时注意性能
-- 涉及安全模块的代码搜索结果需脱敏
+- 自动排除 target/ node_modules/ .git/ .idea/
+- 跨仓库搜索时注意性能，建议指定具体仓库
