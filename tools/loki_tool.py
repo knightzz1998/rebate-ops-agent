@@ -4,23 +4,28 @@
 封装已有的 query_rebate_loki.py，提供 AgentScope 友好的接口
 """
 
-import sys, os, json
+import sys, os, time, argparse
 from pathlib import Path
 from typing import Optional
 
-# 把返利日志查询脚本路径加入 sys.path
 REBATE_SKILL_PATH = os.path.expanduser(
     "~/.config/opencode/rebate-superpowers/skills/rebate-log-query"
 )
 sys.path.insert(0, os.path.join(REBATE_SKILL_PATH, "scripts"))
 
 from query_rebate_loki import (
-    build_loki_url,
-    fetch_loki_logs,
+    load_env_config,
     resolve_session,
-    resolve_config,
+    fetch_logs,
+    parse_time_to_ns,
+    flatten_lines,
     GrafanaQueryError,
+    DEV_DEFAULT_BASE_URL,
+    DEV_DEFAULT_LOKI_UID,
+    DEFAULT_ORG_ID,
 )
+
+CONFIG_FILE = os.path.join(REBATE_SKILL_PATH, "references", "log-env-config.json")
 
 
 async def query_logs(
@@ -43,74 +48,78 @@ async def query_logs(
         limit: 最大返回条数 (默认 100)
 
     返回:
-        {
-            "total": 命中条数,
-            "logs": [{"timestamp": "...", "line": "..."}, ...],
-            "error": None  # 如有错误则不为 None
-        }
+        {"total": N, "logs": [...], "error": None}
     """
     try:
-        # 1. 加载配置
-        config = resolve_config(env)
+        # 加载配置
+        env_config = load_env_config(CONFIG_FILE, env)
+        base_url = env_config.get("base_url", DEV_DEFAULT_BASE_URL)
+        datasource_uid = env_config.get("loki_uid", DEV_DEFAULT_LOKI_UID)
+        org_id = env_config.get("org_id", DEFAULT_ORG_ID)
 
-        # 2. 构建 Loki 查询 URL
-        params = {
-            "limit": limit,
-            "direction": "backward",
-        }
-
-        # 构建 query 表达式
+        # 构建 Loki 表达式
         if app and contains:
-            params["query"] = f'{{app="{app}"}} |= "{contains}"'
+            expr = f'{{app="{app}"}} |= "{contains}"'
         elif app:
-            params["query"] = f'{{app="{app}"}}'
+            expr = f'{{app="{app}"}}'
         elif contains:
-            params["query"] = f'{{app=~".+"}} |= "{contains}"'
+            expr = f'{{app=~".+"}} |= "{contains}"'
         else:
-            params["query"] = '{app=~".+"}'
+            expr = '{app=~".+"}'
 
-        params["start"] = time_from
-        params["end"] = time_to
+        # 时间转换
+        now_ts = time.time()
+        start_ns = parse_time_to_ns(time_from, now_ts)
+        end_ns = parse_time_to_ns(time_to, now_ts)
 
-        # 3. 查询
-        session = resolve_session(env, config)
-        raw_data = fetch_loki_logs(
-            base_url=config["base_url"],
-            loki_uid=config.get("loki_uid", ""),
-            org_id=config.get("org_id", "1"),
+        # 获取 session (自动处理缓存和刷新)
+        fake_args = argparse.Namespace(
+            env=env,
+            session=None,
+            username=None,
+            password=None,
+            session_cache_file=os.path.join(
+                REBATE_SKILL_PATH, "references", ".grafana-session-cache.json"
+            ),
+            config_file=CONFIG_FILE,
+        )
+        env_upper = env.upper()
+        session = resolve_session(fake_args, env_upper, env_config, base_url)
+
+        # 查询 Loki
+        raw_data = fetch_logs(
+            base_url=base_url,
+            datasource_uid=datasource_uid,
+            org_id=org_id,
             session=session,
-            params=params,
+            expr=expr,
+            start_ns=start_ns,
+            end_ns=end_ns,
+            limit=limit,
+            direction="backward",
         )
 
-        # 4. 解析结果
-        results = raw_data.get("data", {}).get("result", [])
-        total = 0
+        # 解析结果
+        lines = flatten_lines(raw_data)
+        total = len(lines)
         logs = []
+        for timestamp_ns, labels, line in lines[:limit]:
+            timestamp_sec = timestamp_ns / 1_000_000_000
+            timestamp_str = time.strftime(
+                "%Y-%m-%d %H:%M:%S", time.localtime(timestamp_sec)
+            )
+            logs.append({
+                "timestamp": timestamp_str,
+                "app": labels.get("app", ""),
+                "line": line[:500],  # 截断超长日志
+            })
 
-        for stream in results:
-            for timestamp_ns, line in stream.get("values", []):
-                total += 1
-                timestamp = timestamp_ns[:19] if len(timestamp_ns) > 19 else timestamp_ns
-                logs.append({
-                    "timestamp": timestamp,
-                    "line": line,
-                })
-
-        return {
-            "total": total,
-            "logs": logs[:limit],
-            "error": None,
-        }
+        return {"total": total, "logs": logs, "error": None}
 
     except GrafanaQueryError as e:
         return {
-            "total": 0,
-            "logs": [],
+            "total": 0, "logs": [],
             "error": f"查询失败 (HTTP {e.status_code}): {e.body[:200]}",
         }
     except Exception as e:
-        return {
-            "total": 0,
-            "logs": [],
-            "error": f"工具异常: {str(e)}",
-        }
+        return {"total": 0, "logs": [], "error": f"工具异常: {str(e)}"}
