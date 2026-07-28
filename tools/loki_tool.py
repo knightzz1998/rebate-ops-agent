@@ -76,8 +76,8 @@ async def query_logs(
         fake_args = argparse.Namespace(
             env=env,
             session=None,
-            username=None,
-            password=None,
+            username=env_config.get("username"),
+            password=env_config.get("password"),
             session_cache_file=os.path.join(
                 REBATE_SKILL_PATH, "references", ".grafana-session-cache.json"
             ),
